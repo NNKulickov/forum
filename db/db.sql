@@ -235,7 +235,8 @@ CREATE INDEX IF NOT EXISTS thread_slug_id ON thread (lower(slug), id);
 CREATE INDEX IF NOT EXISTS actor_ascii_nickname on forum_actors using hash (lower(nickname) collate "C");
 CREATE INDEX IF NOT EXISTS vote_nickname ON vote (lower(nickname), threadid, voice);
 
-CREATE INDEX IF NOT EXISTS post_path ON post ((pathtree));
+CREATE INDEX IF NOT EXISTS post_path ON post using hash((pathtree));
+CREATE INDEX IF NOT EXISTS post_path ON post (id,(pathtree));
 CREATE INDEX IF NOT EXISTS post_threadid ON post (threadid, id);
 
 CREATE INDEX IF NOT EXISTS post_thread_parent_id_threadid ON post (threadid, parent, id); -- parent tree sort

@@ -229,14 +229,17 @@ EXECUTE Function addThreadsToForum();
 
 CREATE INDEX IF NOT EXISTS forum_slug_hash ON forum using hash (slug);
 
+CREATE INDEX IF NOT EXISTS thread_slug ON thread using hash (lower(slug));
+CREATE INDEX IF NOT EXISTS thread_id_forum ON thread using hash (lower(forum));
 CREATE INDEX IF NOT EXISTS thread_slug_id ON thread (lower(slug), id);
-CREATE INDEX IF NOT EXISTS thread_id_forum ON thread (forum);
 CREATE INDEX IF NOT EXISTS actor_ascii_nickname on forum_actors using hash (lower(nickname) collate "C");
 CREATE INDEX IF NOT EXISTS vote_nickname ON vote (lower(nickname), threadid, voice);
 
 CREATE INDEX IF NOT EXISTS post_path ON post ((pathtree));
-CREATE INDEX IF NOT EXISTS post_treadid ON post (threadid);
-CREATE INDEX IF NOT EXISTS post_thread_pathtree_id_threadid ON post (threadid, (post.parent), id); -- parent tree sort
+CREATE INDEX IF NOT EXISTS post_threadid ON post (threadid, id);
+
+CREATE INDEX IF NOT EXISTS post_thread_parent_id_threadid ON post (threadid, parent, id); -- parent tree sort
 CREATE INDEX IF NOT EXISTS post_first_parent_id ON post ((pathtree[1]),id); -- parent tree sort
 CREATE INDEX IF NOT EXISTS thread_parenttree_post on post (threadid,pathtree); -- tree sort
 CREATE INDEX IF NOT EXISTS post_first_parent_thread ON post ((pathtree[1]), threadid); -- tree sort
+CREATE INDEX IF NOT EXISTS forum_actor_forum ON forum_actors (lower(forum));

@@ -3,4 +3,3 @@
 db_dump
 debug
 postgresql.conf
-go.sum

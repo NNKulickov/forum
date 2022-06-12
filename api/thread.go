@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/NNKulickov/forum/forms"
 	"github.com/go-openapi/strfmt"
+	"github.com/jackc/pgtype"
 	"github.com/labstack/echo/v4"
 	"net/http"
 	"strconv"
@@ -80,23 +81,19 @@ func CreateThreadPost(eCtx echo.Context) error {
 	sqlQuery = strings.TrimSuffix(sqlQuery, ",")
 	sqlQuery += ` returning id,parent,author,message,
 		isedited,forum,threadid,created`
-	prep, err := DBS.PrepareContext(ctx, sqlQuery)
+	rows, err := DBS.Query(ctx, sqlQuery, args...)
 	if err != nil {
 		fmt.Println("CreateThreadPost (6):", err)
-		return err
-	}
-	rows, err := prep.QueryContext(ctx, args...)
-	defer prep.Close()
-	if err != nil {
-		fmt.Println("CreateThreadPost (7):", err)
 		return eCtx.JSON(http.StatusNotFound, forms.Error{
 			Message: err.Error(),
 		})
 	}
 	defer rows.Close()
 	postsResult := make([]forms.Post, 0, 100)
+
 	for rows.Next() {
 		post := forms.Post{}
+		created := pgtype.Timestamp{}
 		err = rows.Scan(
 			&post.Id,
 			&post.Parent,
@@ -105,13 +102,20 @@ func CreateThreadPost(eCtx echo.Context) error {
 			&post.IsEdited,
 			&post.Forum,
 			&post.Thread,
-			&post.Created,
+			&created,
 		)
+		post.Created = strfmt.DateTime(created.Time.UTC()).String()
 		if err != nil {
 			fmt.Println("CreateThreadPost (8):", err)
 			return err
 		}
 		postsResult = append(postsResult, post)
+	}
+	if len(postsResult) == 0 {
+		return eCtx.JSON(http.StatusNotFound, forms.Error{
+			Message: "none created",
+		})
+
 	}
 	return eCtx.JSON(http.StatusCreated, postsResult)
 }
@@ -154,7 +158,7 @@ func UpdateThreadDetails(eCtx echo.Context) error {
 	if threadUpdate.Title != "" {
 		thread.Title = threadUpdate.Title
 	}
-	if _, err = DBS.ExecContext(ctx, `
+	if _, err = DBS.Exec(ctx, `
 		update thread set title = $1, message = $2 where id = $3`, thread.Title, thread.Message, thread.Id); err != nil {
 		fmt.Println("GetThreadDetails (3) none thread", err)
 		return eCtx.JSON(http.StatusNotFound, forms.Error{
@@ -185,7 +189,7 @@ func SetThreadVote(eCtx echo.Context) error {
 	if err = eCtx.Bind(&vote); err != nil {
 		fmt.Println("SetThreadVote (2)", err)
 	}
-	if _, err = DBS.ExecContext(ctx, `
+	if _, err = DBS.Exec(ctx, `
 		insert into vote (threadid, nickname, voice)
 			values ($1,$2,$3)
 		on conflict on constraint unique_voice do update 
@@ -231,8 +235,10 @@ func getThreadBySlug(ctx context.Context, threadIdOrSlug string) (forms.ThreadMo
 		slug = threadIdOrSlug
 	}
 	thread := forms.ThreadModel{}
-	if err = DBS.QueryRowContext(ctx, `
-		select id, title, author, forum, message, slug, votes, created from thread where id = $1 or lower(slug) = lower($2) `, id, slug).
+	if err = DBS.QueryRow(ctx, `
+		select id, title, author, forum, message, slug, votes, created
+			from thread 
+		where id = $1 or lower(slug) = lower($2) `, id, slug).
 		Scan(
 			&thread.Id,
 			&thread.Title,
@@ -262,7 +268,7 @@ func getThreadParam(eCtx echo.Context) (string, error) {
 
 func getVotes(ctx context.Context, threadid int) (int, error) {
 	votes := 0
-	err := DBS.QueryRowContext(ctx,
+	err := DBS.QueryRow(ctx,
 		`select sum(voice) from vote where threadid = $1`,
 		threadid,
 	).

@@ -14,25 +14,25 @@ const initialScriptPath = "./db/db.sql"
 func GetServiceStatus(eCtx echo.Context) error {
 	ctx := eCtx.Request().Context()
 	status := forms.Status{}
-	if err := DBS.QueryRowContext(ctx, `select count(*) from forum`).
+	if err := DBS.QueryRow(ctx, `select count(*) from forum`).
 		Scan(&status.Forum); err != nil {
 		fmt.Println("GetServiceStatus (1) :", err)
 		return err
 	}
 
-	if err := DBS.QueryRowContext(ctx, `select count(*) from post`).
+	if err := DBS.QueryRow(ctx, `select count(*) from post`).
 		Scan(&status.Post); err != nil {
 		fmt.Println("GetServiceStatus (2) :", err)
 		return err
 	}
 
-	if err := DBS.QueryRowContext(ctx, `select count(*) from thread`).
+	if err := DBS.QueryRow(ctx, `select count(*) from thread`).
 		Scan(&status.Thread); err != nil {
 		fmt.Println("GetServiceStatus (3) :", err)
 		return err
 	}
 
-	if err := DBS.QueryRowContext(ctx, `select count(*) from actor`).
+	if err := DBS.QueryRow(ctx, `select count(*) from actor`).
 		Scan(&status.User); err != nil {
 		fmt.Println("GetServiceStatus (4) :", err)
 		return err
@@ -43,15 +43,15 @@ func GetServiceStatus(eCtx echo.Context) error {
 func ClearServiceData(eCtx echo.Context) error {
 	ctx := eCtx.Request().Context()
 
-	_, err := DBS.ExecContext(ctx, `
-		truncate actor,forum,post,thread,vote
+	_, err := DBS.Exec(ctx, `
+		truncate actor,forum,post,thread,vote,forum_actors
 		`)
 	sql, err := ioutil.ReadFile(initialScriptPath)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	_, err = DBS.ExecContext(ctx, string(sql))
+	_, err = DBS.Exec(ctx, string(sql))
 	if err != nil {
 		log.Fatal(err)
 	}

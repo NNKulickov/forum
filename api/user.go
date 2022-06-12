@@ -2,8 +2,8 @@ package api
 
 import (
 	"context"
-	"database/sql"
 	"github.com/NNKulickov/forum/forms"
+	"github.com/jackc/pgx/v4"
 	"github.com/labstack/echo/v4"
 	"net/http"
 )
@@ -19,7 +19,7 @@ func CreateUser(eCtx echo.Context) error {
 		return err
 	}
 	user.Nickname = nickname
-	_, err = DBS.ExecContext(eCtx.Request().Context(), `
+	_, err = DBS.Exec(eCtx.Request().Context(), `
 		insert into 
 		    actor (nickname,fullname,about,email) 
 		values ($1,$2,$3,$4)
@@ -28,7 +28,7 @@ func CreateUser(eCtx echo.Context) error {
 	if err == nil {
 		return eCtx.JSON(201, user)
 	}
-	rows, err := DBS.QueryContext(ctx, `
+	rows, err := DBS.Query(ctx, `
 		select nickname,fullname,about,email 
 		from actor 
 		where  lower(nickname) = lower($1) or lower(email) = lower($2)
@@ -53,7 +53,7 @@ func CreateUser(eCtx echo.Context) error {
 
 func GetUserProfile(eCtx echo.Context) error {
 	nickname, err := getSlugUsername(eCtx)
-	user, err := getUserFromDb(eCtx.Request().Context(), nickname)
+	user, err := getUserByNicknam(eCtx.Request().Context(), nickname)
 	if err != nil {
 		return eCtx.JSON(404, forms.Error{Message: "Not found"})
 	}
@@ -61,10 +61,12 @@ func GetUserProfile(eCtx echo.Context) error {
 	return eCtx.JSON(200, user)
 }
 
-func getUserFromDb(ctx context.Context, nickname string) (forms.User, error) {
+func getUserByNicknam(ctx context.Context, nickname string) (forms.User, error) {
 	user := forms.User{}
-	err := DBS.QueryRowContext(ctx, ` 
-			select nickname,fullname,about,email from actor where  lower(nickname) = lower($1)`, nickname).
+	err := DBS.QueryRow(ctx, ` 
+			select nickname,fullname,about,email 
+				from actor
+			where  lower(nickname) = lower($1)`, nickname).
 		Scan(&user.Nickname, &user.Fullname, &user.About, &user.Email)
 
 	return user, err
@@ -82,7 +84,7 @@ func UpdateUserProfile(eCtx echo.Context) error {
 	user.Nickname = nickname
 	userModel := forms.User{}
 
-	if err = DBS.QueryRowContext(eCtx.Request().Context(),
+	if err = DBS.QueryRow(eCtx.Request().Context(),
 		`select nickname,fullname,about,email from actor 
                 where lower(nickname) = lower($1)
 		`, user.Nickname).Scan(
@@ -90,7 +92,7 @@ func UpdateUserProfile(eCtx echo.Context) error {
 		&userModel.Fullname,
 		&userModel.About,
 		&userModel.Email,
-	); err == sql.ErrNoRows {
+	); err == pgx.ErrNoRows {
 		return eCtx.JSON(404, forms.Error{Message: "none such user"})
 
 	}
@@ -103,7 +105,7 @@ func UpdateUserProfile(eCtx echo.Context) error {
 	if user.Fullname == "" {
 		user.Fullname = userModel.Fullname
 	}
-	if err = DBS.QueryRowContext(eCtx.Request().Context(), `
+	if err = DBS.QueryRow(eCtx.Request().Context(), `
 		update actor 
 		set fullname = $2,
 		    about = $3,

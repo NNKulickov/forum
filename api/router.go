@@ -1,12 +1,12 @@
 package api
 
 import (
-	"database/sql"
+	"github.com/jackc/pgx/v4/pgxpool"
 	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
 )
 
-var DBS *sql.DB
+var DBS *pgxpool.Pool
 
 const (
 	forumSlug    = "slug"

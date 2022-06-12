@@ -19,12 +19,12 @@ func CreateForum(eCtx echo.Context) error {
 		return err
 	}
 	ctx := eCtx.Request().Context()
-	user, err := getUserFromDb(ctx, forum.User)
+	user, err := getUserByNicknam(ctx, forum.User)
 	if err != nil {
 		return eCtx.JSON(404, forms.Error{
 			Message: "none such user"})
 	}
-	_, err = DBS.ExecContext(ctx, `
+	_, err = DBS.Exec(ctx, `
 		insert into forum (slug,title,host)
 		values ($1,$2,$3)
 	`,
@@ -98,7 +98,7 @@ func CreateForumThread(eCtx echo.Context) error {
 		builder.WriteString(fmt.Sprintf(",'%s'", thread.Created))
 	}
 	builder.WriteString(") returning id,created")
-	if err = DBS.QueryRowContext(ctx, builder.String(),
+	if err = DBS.QueryRow(ctx, builder.String(),
 		threadModel.Title,
 		threadModel.Author,
 		threadModel.Forum,
@@ -121,7 +121,7 @@ func CreateForumThread(eCtx echo.Context) error {
 		})
 	}
 	// select if exists
-	if err = DBS.QueryRowContext(eCtx.Request().Context(), `
+	if err = DBS.QueryRow(eCtx.Request().Context(), `
 		select
 		id,
 		title,
@@ -183,34 +183,28 @@ func GetForumUsers(eCtx echo.Context) error {
 		Desc:  desc,
 		Since: eCtx.QueryParam("since"),
 	}
-	usersQuery := `
-		select a.nickname,a.fullname,a.about,a.email from post p
-			join actor a on lower(p.author) = lower(a.nickname) 
-		where lower(p.forum) = lower($1)
-		union
-		select a.nickname,a.fullname,a.about,a.email from thread t
-			join actor a on lower(t.author) = lower(a.nickname)
-		where lower(t.forum) = lower($1)`
-
 	build := strings.Builder{}
-	build.WriteString(fmt.Sprintf(`
-			select nickname,fullname,about,email from ( %s ) users
-	`, usersQuery))
+
+	build.WriteString(`
+		select fa.nickname,a.fullname,a.about,a.email from forum_actors fa
+		join actor a on lower(fa.nickname) = lower(a.nickname)
+		where lower(fa.forum) = lower($1)`)
 	if users.Since != "" {
 		if users.Desc {
-			build.WriteString(fmt.Sprintf(` where lower(nickname) collate "C" <  lower('%s') collate "C"`, users.Since))
+			build.WriteString(fmt.Sprintf(` and lower(fa.nickname) collate "C" <  lower('%s') collate "C"`, users.Since))
 
 		} else {
-			build.WriteString(fmt.Sprintf(` where lower(nickname) collate "C" >  lower('%s') collate "C"`, users.Since))
+			build.WriteString(fmt.Sprintf(` and lower(fa.nickname) collate "C" >  lower('%s') collate "C"`, users.Since))
 
 		}
 	}
-	build.WriteString(` order by lower(nickname) collate "C"`)
+	build.WriteString(` order by lower(fa.nickname) collate "C"`)
 	if users.Desc {
 		build.WriteString(" desc")
 	}
 	build.WriteString(" limit nullif($2,0)")
-	if rows, err := DBS.QueryContext(ctx, build.String(), slug, users.Limit); err == nil {
+	if rows, err := DBS.Query(ctx, build.String(),
+		slug, users.Limit); err == nil {
 		usersResponse := make([]forms.User, 0, 100)
 		for rows.Next() {
 			user := forms.User{}
@@ -238,7 +232,7 @@ func GetForumThreads(eCtx echo.Context) error {
 	slug := eCtx.Param(forumSlug)
 	ctx := eCtx.Request().Context()
 	forum := ""
-	if err := DBS.QueryRowContext(ctx,
+	if err := DBS.QueryRow(ctx,
 		`select slug from forum where lower(slug) = lower($1)`,
 		slug).Scan(&forum); err != nil {
 		return eCtx.JSON(http.StatusNotFound, forms.Error{
@@ -261,7 +255,7 @@ func GetForumThreads(eCtx echo.Context) error {
 		Desc:  desc,
 	}
 	if err := eCtx.Bind(&threadsFilter); err != nil {
-		fmt.Println("GetForumUsers (3):", err)
+		fmt.Println("GetForumThreads (1):", err)
 		return err
 	}
 	build := strings.Builder{}
@@ -292,7 +286,7 @@ func GetForumThreads(eCtx echo.Context) error {
 	}
 	build.WriteString(" limit nullif($2,0)")
 	if rows, err := DBS.
-		QueryContext(
+		Query(
 			ctx,
 			build.String(),
 			slug,
@@ -311,7 +305,7 @@ func GetForumThreads(eCtx echo.Context) error {
 					&thread.Created,
 					&thread.Votes,
 				); err != nil {
-				fmt.Println("GetForumUsers (4):", err)
+				fmt.Println("GetForumThreads (2):", err)
 
 				return eCtx.JSON(http.StatusInternalServerError, forms.Error{
 					Message: "smth wrong"})
@@ -336,15 +330,8 @@ func GetForumThreads(eCtx echo.Context) error {
 func getForum(ctx context.Context, slug string) (forms.ForumResult, error) {
 	forum := forms.ForumResult{}
 
-	err := DBS.QueryRowContext(ctx, `
-	with 
-	    threads as (
-			select count(*) threads from thread where lower(forum) = lower($1)
-		),
-	    posts as (
-	    	select count(*) posts from post where lower(forum)= lower($1)
-	    )
-	select f.slug,f.title,f.host,t.threads,p.posts from threads t,posts p, forum f where lower(f.slug) = lower($1);
+	err := DBS.QueryRow(ctx, `
+	select slug,title,host,threads,posts from forum where lower(slug) = lower($1);
 	`, slug).
 		Scan(
 			&forum.Slug,

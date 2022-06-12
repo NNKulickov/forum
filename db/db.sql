@@ -5,6 +5,8 @@
 -- Dumped from database version 14.2 (Debian 14.2-1.pgdg110+1)
 -- Dumped by pg_dump version 14.2 (Debian 14.2-1.pgdg110+1)
 
+
+
 SET statement_timeout = 0;
 SET lock_timeout = 0;
 SET idle_in_transaction_session_timeout = 0;
@@ -35,6 +37,8 @@ CREATE UNLOGGED TABLE IF NOT EXISTS forum(
     slug VARCHAR(100) primary key,
     title VARCHAR(100) NOT NULL,
     host VARCHAR(100) NOT NULL,
+    posts bigint default 0,
+    threads bigint default 0,
     foreign key (host) references actor (nickname)
         on DELETE CASCADE
 );
@@ -59,6 +63,7 @@ CREATE UNLOGGED TABLE IF NOT EXISTS thread(
 );
 
 CREATE UNIQUE INDEX if not exists test_thread on thread (lower(slug));
+CREATE INDEX if not exists thread_lower_forum on thread (lower(forum));
 
 CREATE SEQUENCE IF NOT EXISTS post_id_seq;
 
@@ -91,6 +96,41 @@ CREATE UNLOGGED TABLE IF NOT EXISTS vote(
     constraint unique_voice unique(threadid,nickname)
 );
 
+
+CREATE UNLOGGED TABLE IF NOT EXISTS forum_actors(
+    nickname VARCHAR(100) references actor (nickname)
+        on DELETE CASCADE not null,
+    fullname VARCHAR(400) not null,
+    about TEXT not null default '',
+    email VARCHAR(150) ,
+    forum VARCHAR(100) references forum (slug)
+);
+
+CREATE UNIQUE INDEX if not exists uni_actor_in_forum on forum_actors (lower(nickname),lower(forum));
+
+DO $$ BEGIN
+    CREATE TYPE usmeta AS (
+                              fullname VARCHAR(400),
+                              about text,
+                              email VARCHAR(150)
+                          );
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
+CREATE OR REPLACE FUNCTION insertForumActors() RETURNS trigger as
+$insertForumActors$
+-- Declare
+--     usermeta usmeta;
+begin
+--     select fullname,about,email from actor where  lower(nickname) = lower(new.author) into usermeta;
+    insert into forum_actors (nickname, fullname, about, email, forum)
+    values (new.author,'usermeta.fullname','usermeta.about','usermeta.email',new.forum)
+    on conflict do nothing;
+    return new;
+end;
+$insertForumActors$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION insertPathTree() RETURNS trigger as
 $insertPathTree$
 Declare
@@ -102,9 +142,26 @@ begin
         select pathtree from post where id = new.parent into parent_path;
     new.pathtree := new.pathtree || parent_path || new.id;
     end if;
+    UPDATE forum SET posts=posts + 1 WHERE lower(forum.slug) = lower(new.forum);
     return new;
 end;
 $insertPathTree$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION addPostsToForum() RETURNS trigger as
+$addPostsToForum$
+BEGIN
+    UPDATE forum SET posts=posts + 1 WHERE lower(forum.slug) = lower(new.forum);
+    return new;
+end;
+$addPostsToForum$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION addThreadsToForum() RETURNS trigger as
+$addThreadsToForum$
+BEGIN
+    UPDATE forum SET threads=threads + 1 WHERE lower(forum.slug) = lower(new.forum);
+    return new;
+end;
+$addThreadsToForum$ LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION insertThreadsVotes() RETURNS trigger as
 $insertThreadsVotes$
@@ -126,6 +183,10 @@ $updateThreadsVotes$ LANGUAGE plpgsql;
 drop trigger if exists insertPathTreeTrigger on post;
 drop trigger if exists insertThreadsVotesTrigger on vote;
 drop trigger if exists updateThreadsVotesTrigger on vote;
+drop trigger if exists insertForumActorsThreadTrigger on thread;
+drop trigger if exists insertForumActorsPostTrigger on post;
+drop trigger if exists updateThreadsForumCount on thread;
+drop trigger if exists updatePostsForumCount on post;
 
 CREATE TRIGGER  insertPathTreeTrigger
     BEFORE INSERT
@@ -145,5 +206,36 @@ CREATE TRIGGER  updateThreadsVotesTrigger
     for each row
 EXECUTE Function updateThreadsVotes();
 
+CREATE TRIGGER  insertForumActorsThreadTrigger
+    AFTER INSERT
+    on thread
+    for each row
+EXECUTE Function insertForumActors();
+
+CREATE TRIGGER  insertForumActorsPostTrigger
+    AFTER INSERT
+    on post
+    for each row
+EXECUTE Function insertForumActors();
+
+
+
+CREATE TRIGGER  updateThreadsForumCount
+    AFTER INSERT
+    on thread
+    for each row
+EXECUTE Function addThreadsToForum();
+
+
+CREATE INDEX IF NOT EXISTS forum_slug_hash ON forum using hash (slug);
+
+CREATE INDEX IF NOT EXISTS thread_slug_id_index ON thread (lower(slug), id);
+CREATE INDEX IF NOT EXISTS thread_id_forum_index ON thread (forum);
+CREATE INDEX IF NOT EXISTS actor_ascii_nickname on actor using hash (lower(nickname) collate "C");
+CREATE INDEX IF NOT EXISTS vote_nickname ON vote (lower(nickname), threadid, voice); -- +
+CREATE INDEX IF NOT EXISTS post_thread_path_id_index ON post (threadid, (post.parent), id);
+
+CREATE INDEX IF NOT EXISTS post_path_index ON post ((post.pathtree));
+CREATE INDEX IF NOT EXISTS post_first_parent_index ON post ((post.pathtree[1]));
 CREATE INDEX IF NOT EXISTS thread_parenttree_post on post (threadid,pathtree);
-CREATE INDEX IF NOT EXISTS first_parent_post on post ((pathtree[1]),pathtree);
+CREATE INDEX IF NOT EXISTS post_first_parent_thread_index ON post ((post.pathtree[1]), threadid);

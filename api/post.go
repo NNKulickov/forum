@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/NNKulickov/forum/forms"
 	"github.com/go-openapi/strfmt"
+	"github.com/jackc/pgtype"
 	"github.com/labstack/echo/v4"
 	"net/http"
 	"strconv"
@@ -37,7 +38,7 @@ func GetPostDetails(eCtx echo.Context) error {
 	}
 	details.Post = post
 	if isUser {
-		author, err := getUserFromDb(ctx, post.Author)
+		author, err := getUserByNicknam(ctx, post.Author)
 		if err != nil {
 			fmt.Println("GetPostDetails (3):", err)
 			return eCtx.JSON(http.StatusNotFound, forms.Error{
@@ -80,7 +81,8 @@ func GetPostDetails(eCtx echo.Context) error {
 
 func getSinglePost(ctx context.Context, id int) (forms.Post, error) {
 	post := forms.Post{}
-	if err := DBS.QueryRowContext(ctx, `
+	created := pgtype.Timestamp{}
+	if err := DBS.QueryRow(ctx, `
 		select id,parent,author,message,isedited,forum,threadid,created from post
 		where id = $1`, id).
 		Scan(
@@ -91,11 +93,12 @@ func getSinglePost(ctx context.Context, id int) (forms.Post, error) {
 			&post.IsEdited,
 			&post.Forum,
 			&post.Thread,
-			&post.Created,
+			&created,
 		); err != nil {
 		fmt.Println("getSinglePost:", err)
 		return post, errors.New("Not found post")
 	}
+	post.Created = strfmt.DateTime(created.Time.UTC()).String()
 	return post, nil
 }
 
@@ -122,10 +125,12 @@ func UpdatePostDetails(eCtx echo.Context) error {
 			Message: err.Error(),
 		})
 	}
+
 	if postUpdate.Message == "" || postUpdate.Message == post.Message {
 		return eCtx.JSON(http.StatusOK, post)
 	}
-	if err = DBS.QueryRowContext(ctx, `
+	created := pgtype.Timestamp{}
+	if err = DBS.QueryRow(ctx, `
 		update post set message = $1,isedited = true  where id = $2
 		returning id,parent,author,message,isedited,forum,threadid,created
 		`, postUpdate.Message, id).
@@ -137,13 +142,14 @@ func UpdatePostDetails(eCtx echo.Context) error {
 			&post.IsEdited,
 			&post.Forum,
 			&post.Thread,
-			&post.Created,
+			&created,
 		); err != nil {
 		fmt.Println("UpdatePostDetails (4):", err)
 		return eCtx.JSON(http.StatusNotFound, forms.Error{
 			Message: "Not found post",
 		})
 	}
+	post.Created = strfmt.DateTime(created.Time.UTC()).String()
 
 	return eCtx.JSON(http.StatusOK, post)
 }
@@ -171,7 +177,7 @@ func getPostsFlat(ctx context.Context, threadid, limit, since int, desc bool) ([
 		builder.WriteString(" desc")
 	}
 	builder.WriteString(",created limit nullif($2,0)")
-	rows, err := DBS.QueryContext(ctx, builder.String(),
+	rows, err := DBS.Query(ctx, builder.String(),
 		threadid, limit)
 	if err != nil {
 		fmt.Println("getPostsFlat(1): ", err)
@@ -179,6 +185,7 @@ func getPostsFlat(ctx context.Context, threadid, limit, since int, desc bool) ([
 	}
 	for rows.Next() {
 		post := forms.Post{}
+		created := pgtype.Timestamp{}
 		err = rows.Scan(
 			&post.Id,
 			&post.Parent,
@@ -187,12 +194,13 @@ func getPostsFlat(ctx context.Context, threadid, limit, since int, desc bool) ([
 			&post.IsEdited,
 			&post.Forum,
 			&post.Thread,
-			&post.Created,
+			&created,
 		)
 		if err != nil {
 			fmt.Println("getPostsFlat(2): ", err, post)
 			return nil, err
 		}
+		post.Created = strfmt.DateTime(created.Time.UTC()).String()
 		posts = append(posts, post)
 	}
 	return posts, nil
@@ -231,7 +239,7 @@ func getPostsParentTree(ctx context.Context, threadid, limit, since int, desc bo
 
 	}
 	fmt.Println("getPostsParentTree:", builder.String())
-	rows, err := DBS.QueryContext(ctx, builder.String(),
+	rows, err := DBS.Query(ctx, builder.String(),
 		threadid, limit)
 	if err != nil {
 		fmt.Println("getPostsParentTree(1): ", err)
@@ -239,6 +247,7 @@ func getPostsParentTree(ctx context.Context, threadid, limit, since int, desc bo
 	}
 	for rows.Next() {
 		post := forms.Post{}
+		created := pgtype.Timestamp{}
 		err = rows.Scan(
 			&post.Id,
 			&post.Parent,
@@ -247,12 +256,13 @@ func getPostsParentTree(ctx context.Context, threadid, limit, since int, desc bo
 			&post.IsEdited,
 			&post.Forum,
 			&post.Thread,
-			&post.Created,
+			&created,
 		)
 		if err != nil {
 			fmt.Println("getPostsParentTree(2): ", err, post)
 			return nil, err
 		}
+		post.Created = strfmt.DateTime(created.Time.UTC()).String()
 		posts = append(posts, post)
 	}
 	return posts, nil
@@ -281,7 +291,7 @@ func getPostsTree(ctx context.Context, threadid, limit, since int, desc bool) ([
 		builder.WriteString("desc")
 	}
 	builder.WriteString(" limit nullif($2,0)")
-	rows, err := DBS.QueryContext(ctx, builder.String(),
+	rows, err := DBS.Query(ctx, builder.String(),
 		threadid, limit)
 	if err != nil {
 		fmt.Println("getPostsTree(1): ", err)
@@ -289,6 +299,7 @@ func getPostsTree(ctx context.Context, threadid, limit, since int, desc bool) ([
 	}
 	for rows.Next() {
 		post := forms.Post{}
+		created := pgtype.Timestamp{}
 		err = rows.Scan(
 			&post.Id,
 			&post.Parent,
@@ -297,12 +308,13 @@ func getPostsTree(ctx context.Context, threadid, limit, since int, desc bool) ([
 			&post.IsEdited,
 			&post.Forum,
 			&post.Thread,
-			&post.Created,
+			&created,
 		)
 		if err != nil {
 			fmt.Println("getPostsTree(2): ", err, post)
 			return nil, err
 		}
+		post.Created = strfmt.DateTime(created.Time.UTC()).String()
 		posts = append(posts, post)
 	}
 	return posts, nil

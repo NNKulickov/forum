@@ -5,55 +5,59 @@ import (
 	"errors"
 	"fmt"
 	"github.com/NNKulickov/forum/forms"
+	"github.com/NNKulickov/forum/response"
 	"github.com/go-openapi/strfmt"
 	"github.com/jackc/pgtype"
-	"github.com/labstack/echo/v4"
+	"github.com/valyala/fasthttp"
 	"net/http"
 	"strconv"
 	"strings"
 )
 
-func GetPostDetails(eCtx echo.Context) error {
-	idStr := eCtx.Param(postSlug)
+func GetPostDetails(fastCtx *fasthttp.RequestCtx) {
+	idStr := fastCtx.UserValue(postSlug).(string)
 	id := 0
 	var err error
 	if id, err = strconv.Atoi(idStr); err != nil {
 		fmt.Println("GetPostDetails (1):", err)
-		return err
+		return
 	}
-	related := eCtx.QueryParam("related")
+	related := string(fastCtx.QueryArgs().Peek("related"))
 	isUser := strings.Contains(related, "user")
 	isForum := strings.Contains(related, "forum")
 	isThread := strings.Contains(related, "thread")
 
-	ctx := eCtx.Request().Context()
+	ctx := context.Background()
 	details := forms.PostDetails{}
 
 	post, err := getSinglePost(ctx, id)
 	if err != nil {
 		fmt.Println("GetPostDetails (2):", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
+		response.Send(http.StatusNotFound, forms.Error{
 			Message: err.Error(),
-		})
+		}, fastCtx)
+		return
 	}
 	details.Post = post
 	if isUser {
 		author, err := getUserByNicknam(ctx, post.Author)
 		if err != nil {
 			fmt.Println("GetPostDetails (3):", err)
-			return eCtx.JSON(http.StatusNotFound, forms.Error{
+			response.Send(http.StatusNotFound, forms.Error{
 				Message: "Not found user",
-			})
+			}, fastCtx)
+			return
 		}
 		details.Author = &author
 	}
 	if isThread {
 		threadModel := forms.ThreadModel{}
-		if threadModel, err = getThreadBySlug(ctx, fmt.Sprintf("%d", post.Thread)); err != nil {
+		if threadModel, err = getThreadById(ctx, post.Thread); err != nil {
 			fmt.Println("GetPostDetails (4):", err)
-			return eCtx.JSON(http.StatusNotFound, forms.Error{
+			response.Send(http.StatusNotFound, forms.Error{
 				Message: "Not found thread",
-			})
+			}, fastCtx)
+			return
 		}
 		details.Thread = &forms.ThreadForm{
 			Id:      threadModel.Id,
@@ -70,13 +74,14 @@ func GetPostDetails(eCtx echo.Context) error {
 		forum, err := getForum(ctx, post.Forum)
 		if err != nil {
 			fmt.Println("GetPostDetails (5):", err)
-			return eCtx.JSON(http.StatusNotFound, forms.Error{
+			response.Send(http.StatusNotFound, forms.Error{
 				Message: "Not found forum",
-			})
+			}, fastCtx)
+			return
 		}
 		details.Forum = &forum
 	}
-	return eCtx.JSON(http.StatusOK, details)
+	response.Send(http.StatusOK, details, fastCtx)
 }
 
 func getSinglePost(ctx context.Context, id int) (forms.Post, error) {
@@ -102,32 +107,34 @@ func getSinglePost(ctx context.Context, id int) (forms.Post, error) {
 	return post, nil
 }
 
-func UpdatePostDetails(eCtx echo.Context) error {
-	idStr := eCtx.Param(postSlug)
+func UpdatePostDetails(fastCtx *fasthttp.RequestCtx) {
+	idStr := fastCtx.UserValue(postSlug).(string)
 	id := 0
 	var err error
-	ctx := eCtx.Request().Context()
+	ctx := context.Background()
 	postUpdate := new(forms.PostUpdate)
-	if err = eCtx.Bind(&postUpdate); err != nil {
+	if err = postUpdate.UnmarshalJSON(fastCtx.Request.Body()); err != nil {
 		fmt.Println("UpdatePostDetails (1):", err)
-		return err
+		return
 	}
 
 	if id, err = strconv.Atoi(idStr); err != nil {
 		fmt.Println("UpdatePostDetails (2):", err)
-		return err
+		return
 	}
 	post := forms.Post{}
 	post, err = getSinglePost(ctx, id)
 	if err != nil {
 		fmt.Println("UpdatePostDetails (3):", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
+		response.Send(http.StatusNotFound, forms.Error{
 			Message: err.Error(),
-		})
+		}, fastCtx)
+		return
 	}
 
 	if postUpdate.Message == "" || postUpdate.Message == post.Message {
-		return eCtx.JSON(http.StatusOK, post)
+		response.Send(http.StatusOK, post, fastCtx)
+		return
 	}
 	created := pgtype.Timestamp{}
 	if err = DBS.QueryRow(ctx, `
@@ -145,13 +152,13 @@ func UpdatePostDetails(eCtx echo.Context) error {
 			&created,
 		); err != nil {
 		fmt.Println("UpdatePostDetails (4):", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
+		response.Send(http.StatusNotFound, forms.Error{
 			Message: "Not found post",
-		})
+		}, fastCtx)
+		return
 	}
 	post.Created = strfmt.DateTime(created.Time.UTC()).String()
-
-	return eCtx.JSON(http.StatusOK, post)
+	response.Send(http.StatusOK, post, fastCtx)
 }
 
 func getPostsFlat(ctx context.Context, threadid, limit, since int, desc bool) ([]forms.Post, error) {

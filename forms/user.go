@@ -12,3 +12,6 @@ type UserFilter struct {
 	Since string `json:"since,omitempty"`
 	Desc  bool   `json:"desc,omitempty"`
 }
+
+//easyjson:json
+type Users []User

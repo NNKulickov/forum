@@ -1,8 +1,8 @@
 package api
 
 import (
+	"github.com/fasthttp/router"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/labstack/echo/v4"
 	_ "github.com/lib/pq"
 )
 
@@ -15,68 +15,68 @@ const (
 	usernameSlug = "username"
 )
 
-func initForum(e *echo.Group) {
+func initForum(g *router.Group) {
 	const (
 		create        = "/create"
-		slugged       = "/:" + forumSlug
+		slugged       = "/{" + forumSlug + "}"
 		details       = slugged + "/details"
 		sluggedCreate = slugged + "/create"
 		users         = slugged + "/users"
 		threads       = slugged + "/threads"
 	)
-	e.POST(create, CreateForum)
-	e.GET(details, GetForumDetails)
-	e.POST(sluggedCreate, CreateForumThread)
-	e.GET(users, GetForumUsers)
-	e.GET(threads, GetForumThreads)
+	g.POST(create, CreateForum)
+	g.GET(details, GetForumDetails)
+	g.POST(sluggedCreate, CreateForumThread)
+	g.GET(users, GetForumUsers)
+	g.GET(threads, GetForumThreads)
 }
 
-func initPost(e *echo.Group) {
+func initPost(g *router.Group) {
 	const (
-		postDetails = "/:" + postSlug + "/details"
+		postDetails = "/{" + postSlug + "}/details"
 	)
-	e.GET(postDetails, GetPostDetails)
-	e.POST(postDetails, UpdatePostDetails)
+	g.GET(postDetails, GetPostDetails)
+	g.POST(postDetails, UpdatePostDetails)
 }
 
-func initService(e *echo.Group) {
+func initService(g *router.Group) {
 	const (
 		clear  = "/clear"
 		status = "/status"
 	)
-	e.GET(status, GetServiceStatus)
-	e.POST(clear, ClearServiceData)
+	g.GET(status, GetServiceStatus)
+	g.POST(clear, ClearServiceData)
 }
 
-func initThread(e *echo.Group) {
+func initThread(g *router.Group) {
 	const (
-		slugged = "/:" + threadSlug
+		slugged = "/{" + threadSlug + "}"
 		create  = slugged + "/create"
 		details = slugged + "/details"
 		posts   = slugged + "/posts"
 		vote    = slugged + "/vote"
 	)
-	e.POST(create, CreateThreadPost)
-	e.GET(details, GetThreadDetails)
-	e.POST(details, UpdateThreadDetails)
-	e.GET(posts, GetThreadPosts)
-	e.POST(vote, SetThreadVote)
+	g.POST(create, CreateThreadPost)
+	g.GET(details, GetThreadDetails)
+	g.POST(details, UpdateThreadDetails)
+	g.GET(posts, GetThreadPosts)
+	g.POST(vote, SetThreadVote)
 
 }
 
-func initUser(e *echo.Group) {
+func initUser(g *router.Group) {
 	const (
-		slugged = "/:" + usernameSlug
+		slugged = "/{" + usernameSlug + "}"
 		create  = slugged + "/create"
 		profile = slugged + "/profile"
 	)
-	e.POST(create, CreateUser)
-	e.GET(profile, GetUserProfile)
-	e.POST(profile, UpdateUserProfile)
+	g.POST(create, CreateUser)
+	g.GET(profile, GetUserProfile)
+	g.POST(profile, UpdateUserProfile)
 
 }
 
-func InitRoutes(e *echo.Group) {
+func InitRoutes(g *router.Group) {
 	const (
 		forum   = "/forum"
 		post    = "/post"
@@ -84,9 +84,9 @@ func InitRoutes(e *echo.Group) {
 		thread  = "/thread"
 		user    = "/user"
 	)
-	initForum(e.Group(forum))
-	initPost(e.Group(post))
-	initService(e.Group(service))
-	initThread(e.Group(thread))
-	initUser(e.Group(user))
+	initForum(g.Group(forum))
+	initPost(g.Group(post))
+	initService(g.Group(service))
+	initThread(g.Group(thread))
+	initUser(g.Group(user))
 }

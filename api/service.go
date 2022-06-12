@@ -1,9 +1,11 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"github.com/NNKulickov/forum/forms"
-	"github.com/labstack/echo/v4"
+	"github.com/NNKulickov/forum/response"
+	"github.com/valyala/fasthttp"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -11,37 +13,37 @@ import (
 
 const initialScriptPath = "./db/db.sql"
 
-func GetServiceStatus(eCtx echo.Context) error {
-	ctx := eCtx.Request().Context()
+func GetServiceStatus(fastCtx *fasthttp.RequestCtx) {
+	ctx := context.Background()
 	status := forms.Status{}
 	if err := DBS.QueryRow(ctx, `select count(*) from forum`).
 		Scan(&status.Forum); err != nil {
 		fmt.Println("GetServiceStatus (1) :", err)
-		return err
+		return
 	}
 
 	if err := DBS.QueryRow(ctx, `select count(*) from post`).
 		Scan(&status.Post); err != nil {
 		fmt.Println("GetServiceStatus (2) :", err)
-		return err
+		return
 	}
 
 	if err := DBS.QueryRow(ctx, `select count(*) from thread`).
 		Scan(&status.Thread); err != nil {
 		fmt.Println("GetServiceStatus (3) :", err)
-		return err
+		return
 	}
 
 	if err := DBS.QueryRow(ctx, `select count(*) from actor`).
 		Scan(&status.User); err != nil {
 		fmt.Println("GetServiceStatus (4) :", err)
-		return err
+		return
 	}
-	return eCtx.JSON(http.StatusOK, status)
+	response.Send(http.StatusOK, status, fastCtx)
 }
 
-func ClearServiceData(eCtx echo.Context) error {
-	ctx := eCtx.Request().Context()
+func ClearServiceData(fastCtx *fasthttp.RequestCtx) {
+	ctx := context.Background()
 
 	_, err := DBS.Exec(ctx, `
 		truncate actor,forum,post,thread,vote,forum_actors
@@ -55,5 +57,7 @@ func ClearServiceData(eCtx echo.Context) error {
 	if err != nil {
 		log.Fatal(err)
 	}
-	return eCtx.JSON(http.StatusOK, "ok")
+	response.Send(http.StatusOK, forms.Error{
+		Message: " smth wrong",
+	}, fastCtx)
 }

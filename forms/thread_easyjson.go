@@ -18,7 +18,7 @@ var (
 	_ easyjson.Marshaler
 )
 
-func easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms(in *jlexer.Lexer, out *Vote) {
+func easyjson2d00218DecodeGithubComNNKulickovForumForms(in *jlexer.Lexer, out *Vote) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -51,7 +51,7 @@ func easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms(in *jlexer
 		in.Consumed()
 	}
 }
-func easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms(out *jwriter.Writer, in Vote) {
+func easyjson2d00218EncodeGithubComNNKulickovForumForms(out *jwriter.Writer, in Vote) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -71,27 +71,93 @@ func easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms(out *jwrit
 // MarshalJSON supports json.Marshaler interface
 func (v Vote) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms(&w, v)
+	easyjson2d00218EncodeGithubComNNKulickovForumForms(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v Vote) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms(w, v)
+	easyjson2d00218EncodeGithubComNNKulickovForumForms(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *Vote) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms(&r, v)
+	easyjson2d00218DecodeGithubComNNKulickovForumForms(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *Vote) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms(l, v)
+	easyjson2d00218DecodeGithubComNNKulickovForumForms(l, v)
 }
-func easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms1(in *jlexer.Lexer, out *ThreadUpdate) {
+func easyjson2d00218DecodeGithubComNNKulickovForumForms1(in *jlexer.Lexer, out *ThreadsFrom) {
+	isTopLevel := in.IsStart()
+	if in.IsNull() {
+		in.Skip()
+		*out = nil
+	} else {
+		in.Delim('[')
+		if *out == nil {
+			if !in.IsDelim(']') {
+				*out = make(ThreadsFrom, 0, 0)
+			} else {
+				*out = ThreadsFrom{}
+			}
+		} else {
+			*out = (*out)[:0]
+		}
+		for !in.IsDelim(']') {
+			var v1 ThreadForm
+			(v1).UnmarshalEasyJSON(in)
+			*out = append(*out, v1)
+			in.WantComma()
+		}
+		in.Delim(']')
+	}
+	if isTopLevel {
+		in.Consumed()
+	}
+}
+func easyjson2d00218EncodeGithubComNNKulickovForumForms1(out *jwriter.Writer, in ThreadsFrom) {
+	if in == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
+		out.RawString("null")
+	} else {
+		out.RawByte('[')
+		for v2, v3 := range in {
+			if v2 > 0 {
+				out.RawByte(',')
+			}
+			(v3).MarshalEasyJSON(out)
+		}
+		out.RawByte(']')
+	}
+}
+
+// MarshalJSON supports json.Marshaler interface
+func (v ThreadsFrom) MarshalJSON() ([]byte, error) {
+	w := jwriter.Writer{}
+	easyjson2d00218EncodeGithubComNNKulickovForumForms1(&w, v)
+	return w.Buffer.BuildBytes(), w.Error
+}
+
+// MarshalEasyJSON supports easyjson.Marshaler interface
+func (v ThreadsFrom) MarshalEasyJSON(w *jwriter.Writer) {
+	easyjson2d00218EncodeGithubComNNKulickovForumForms1(w, v)
+}
+
+// UnmarshalJSON supports json.Unmarshaler interface
+func (v *ThreadsFrom) UnmarshalJSON(data []byte) error {
+	r := jlexer.Lexer{Data: data}
+	easyjson2d00218DecodeGithubComNNKulickovForumForms1(&r, v)
+	return r.Error()
+}
+
+// UnmarshalEasyJSON supports easyjson.Unmarshaler interface
+func (v *ThreadsFrom) UnmarshalEasyJSON(l *jlexer.Lexer) {
+	easyjson2d00218DecodeGithubComNNKulickovForumForms1(l, v)
+}
+func easyjson2d00218DecodeGithubComNNKulickovForumForms2(in *jlexer.Lexer, out *ThreadUpdate) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -124,7 +190,7 @@ func easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms1(in *jlexe
 		in.Consumed()
 	}
 }
-func easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms1(out *jwriter.Writer, in ThreadUpdate) {
+func easyjson2d00218EncodeGithubComNNKulickovForumForms2(out *jwriter.Writer, in ThreadUpdate) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -150,27 +216,27 @@ func easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms1(out *jwri
 // MarshalJSON supports json.Marshaler interface
 func (v ThreadUpdate) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms1(&w, v)
+	easyjson2d00218EncodeGithubComNNKulickovForumForms2(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v ThreadUpdate) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms1(w, v)
+	easyjson2d00218EncodeGithubComNNKulickovForumForms2(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *ThreadUpdate) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms1(&r, v)
+	easyjson2d00218DecodeGithubComNNKulickovForumForms2(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *ThreadUpdate) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms1(l, v)
+	easyjson2d00218DecodeGithubComNNKulickovForumForms2(l, v)
 }
-func easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms2(in *jlexer.Lexer, out *ThreadModel) {
+func easyjson2d00218DecodeGithubComNNKulickovForumForms3(in *jlexer.Lexer, out *ThreadModel) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -217,7 +283,7 @@ func easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms2(in *jlexe
 		in.Consumed()
 	}
 }
-func easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms2(out *jwriter.Writer, in ThreadModel) {
+func easyjson2d00218EncodeGithubComNNKulickovForumForms3(out *jwriter.Writer, in ThreadModel) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -267,25 +333,25 @@ func easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms2(out *jwri
 // MarshalJSON supports json.Marshaler interface
 func (v ThreadModel) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms2(&w, v)
+	easyjson2d00218EncodeGithubComNNKulickovForumForms3(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v ThreadModel) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms2(w, v)
+	easyjson2d00218EncodeGithubComNNKulickovForumForms3(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *ThreadModel) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms2(&r, v)
+	easyjson2d00218DecodeGithubComNNKulickovForumForms3(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *ThreadModel) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms2(l, v)
+	easyjson2d00218DecodeGithubComNNKulickovForumForms3(l, v)
 }
 func easyjson2d00218DecodeDatabaseSql(in *jlexer.Lexer, out *sql.NullString) {
 	isTopLevel := in.IsStart()
@@ -336,7 +402,7 @@ func easyjson2d00218EncodeDatabaseSql(out *jwriter.Writer, in sql.NullString) {
 	}
 	out.RawByte('}')
 }
-func easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms3(in *jlexer.Lexer, out *ThreadForm) {
+func easyjson2d00218DecodeGithubComNNKulickovForumForms4(in *jlexer.Lexer, out *ThreadForm) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -381,7 +447,7 @@ func easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms3(in *jlexe
 		in.Consumed()
 	}
 }
-func easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms3(out *jwriter.Writer, in ThreadForm) {
+func easyjson2d00218EncodeGithubComNNKulickovForumForms4(out *jwriter.Writer, in ThreadForm) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -437,27 +503,27 @@ func easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms3(out *jwri
 // MarshalJSON supports json.Marshaler interface
 func (v ThreadForm) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms3(&w, v)
+	easyjson2d00218EncodeGithubComNNKulickovForumForms4(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v ThreadForm) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms3(w, v)
+	easyjson2d00218EncodeGithubComNNKulickovForumForms4(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *ThreadForm) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms3(&r, v)
+	easyjson2d00218DecodeGithubComNNKulickovForumForms4(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *ThreadForm) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms3(l, v)
+	easyjson2d00218DecodeGithubComNNKulickovForumForms4(l, v)
 }
-func easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms4(in *jlexer.Lexer, out *ThreadFilter) {
+func easyjson2d00218DecodeGithubComNNKulickovForumForms5(in *jlexer.Lexer, out *ThreadFilter) {
 	isTopLevel := in.IsStart()
 	if in.IsNull() {
 		if isTopLevel {
@@ -492,7 +558,7 @@ func easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms4(in *jlexe
 		in.Consumed()
 	}
 }
-func easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms4(out *jwriter.Writer, in ThreadFilter) {
+func easyjson2d00218EncodeGithubComNNKulickovForumForms5(out *jwriter.Writer, in ThreadFilter) {
 	out.RawByte('{')
 	first := true
 	_ = first
@@ -528,23 +594,23 @@ func easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms4(out *jwri
 // MarshalJSON supports json.Marshaler interface
 func (v ThreadFilter) MarshalJSON() ([]byte, error) {
 	w := jwriter.Writer{}
-	easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms4(&w, v)
+	easyjson2d00218EncodeGithubComNNKulickovForumForms5(&w, v)
 	return w.Buffer.BuildBytes(), w.Error
 }
 
 // MarshalEasyJSON supports easyjson.Marshaler interface
 func (v ThreadFilter) MarshalEasyJSON(w *jwriter.Writer) {
-	easyjson2d00218EncodeGithubComNNKulickovTechnoparkDbmsForumForms4(w, v)
+	easyjson2d00218EncodeGithubComNNKulickovForumForms5(w, v)
 }
 
 // UnmarshalJSON supports json.Unmarshaler interface
 func (v *ThreadFilter) UnmarshalJSON(data []byte) error {
 	r := jlexer.Lexer{Data: data}
-	easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms4(&r, v)
+	easyjson2d00218DecodeGithubComNNKulickovForumForms5(&r, v)
 	return r.Error()
 }
 
 // UnmarshalEasyJSON supports easyjson.Unmarshaler interface
 func (v *ThreadFilter) UnmarshalEasyJSON(l *jlexer.Lexer) {
-	easyjson2d00218DecodeGithubComNNKulickovTechnoparkDbmsForumForms4(l, v)
+	easyjson2d00218DecodeGithubComNNKulickovForumForms5(l, v)
 }

@@ -5,31 +5,44 @@ import (
 	"errors"
 	"fmt"
 	"github.com/NNKulickov/forum/forms"
+	"github.com/NNKulickov/forum/response"
 	"github.com/go-openapi/strfmt"
 	"github.com/jackc/pgtype"
-	"github.com/labstack/echo/v4"
+	"github.com/valyala/fasthttp"
 	"net/http"
 	"strconv"
 	"strings"
 )
 
-func CreateThreadPost(eCtx echo.Context) error {
-	ctx := eCtx.Request().Context()
-	thread, err := getThread(eCtx)
+var errNoneThread = errors.New("None thread")
+
+func CreateThreadPost(fastCtx *fasthttp.RequestCtx) {
+	threadIdOrSlug := fastCtx.UserValue(threadSlug).(string)
+	ctx := context.Background()
+	threadid, ok := checkThreadByIdOrSlug(ctx, threadIdOrSlug)
+	if !ok {
+		fmt.Println("CreateThreadPost (1)", errNoneThread)
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: errNoneThread.Error(),
+		}, fastCtx)
+	}
+	forum, err := getThreadForumById(ctx, threadid)
 	if err != nil {
-		fmt.Println("CreateThreadPost (1)", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
-			Message: err.Error(),
-		})
-	}
-
-	posts := make([]forms.Post, 0, 100)
-	if err = eCtx.Bind(&posts); err != nil {
 		fmt.Println("CreateThreadPost (2)", err)
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: err.Error(),
+		}, fastCtx)
+		return
 	}
 
-	if len(posts) == 0 {
-		return eCtx.JSON(http.StatusCreated, posts)
+	posts := new(forms.Posts)
+	if err = posts.UnmarshalJSON(fastCtx.Request.Body()); err != nil {
+		fmt.Println("CreateThreadPost (3)", err)
+	}
+
+	if len(*posts) == 0 {
+		response.Send(http.StatusCreated, posts, fastCtx)
+		return
 	}
 
 	builder := strings.Builder{}
@@ -40,27 +53,29 @@ func CreateThreadPost(eCtx echo.Context) error {
 	args := []any{}
 
 	parentExists := true
-	for i, post := range posts {
+	for i, post := range *posts {
 		if post.Parent != 0 {
 			parentPost, err := getSinglePost(ctx, post.Parent)
 			if err != nil {
 				fmt.Println("CreateThreadPost (3):", err, post.Parent)
-				return eCtx.JSON(http.StatusConflict, forms.Error{
+				response.Send(http.StatusConflict, forms.Error{
 					Message: err.Error() + fmt.Sprintf(" %d", post.Parent),
-				})
+				}, fastCtx)
+				return
 			}
-			if parentPost.Thread != thread.Id {
+			if parentPost.Thread != threadid {
 				fmt.Println("CreateThreadPost (4):", err)
-				return eCtx.JSON(http.StatusConflict, forms.Error{
+				response.Send(http.StatusConflict, forms.Error{
 					Message: "Parent in another thread",
-				})
+				}, fastCtx)
+				return
 			}
 		}
 		builder.WriteString(fmt.Sprintf("($%d,$%d,$%d,$%d,$%d,$%d,now()),",
 			6*i+1, 6*i+2, 6*i+3, 6*i+4, 6*i+5, 6*i+6))
 		post.IsEdited = false
-		post.Forum = thread.Forum
-		post.Thread = thread.Id
+		post.Forum = forum
+		post.Thread = threadid
 		args = append(args,
 			post.Parent,
 			post.Author,
@@ -72,9 +87,10 @@ func CreateThreadPost(eCtx echo.Context) error {
 	}
 	if !parentExists {
 		fmt.Println("CreateThreadPost (5) None parent")
-		return eCtx.JSON(http.StatusConflict, forms.Error{
+		response.Send(http.StatusConflict, forms.Error{
 			Message: "None parent",
-		})
+		}, fastCtx)
+		return
 	}
 
 	sqlQuery := builder.String()
@@ -84,12 +100,13 @@ func CreateThreadPost(eCtx echo.Context) error {
 	rows, err := DBS.Query(ctx, sqlQuery, args...)
 	if err != nil {
 		fmt.Println("CreateThreadPost (6):", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
+		response.Send(http.StatusNotFound, forms.Error{
 			Message: err.Error(),
-		})
+		}, fastCtx)
+		return
 	}
 	defer rows.Close()
-	postsResult := make([]forms.Post, 0, 100)
+	postsResult := new(forms.Posts)
 
 	for rows.Next() {
 		post := forms.Post{}
@@ -107,28 +124,55 @@ func CreateThreadPost(eCtx echo.Context) error {
 		post.Created = strfmt.DateTime(created.Time.UTC()).String()
 		if err != nil {
 			fmt.Println("CreateThreadPost (8):", err)
-			return err
+			response.Send(http.StatusInternalServerError, forms.Error{
+				Message: " smth wrong",
+			}, fastCtx)
+			return
 		}
-		postsResult = append(postsResult, post)
+		*postsResult = append(*postsResult, post)
 	}
-	if len(postsResult) == 0 {
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
+	if len(*postsResult) == 0 {
+		response.Send(http.StatusNotFound, forms.Error{
 			Message: "none created",
-		})
-
+		}, fastCtx)
+		return
 	}
-	return eCtx.JSON(http.StatusCreated, postsResult)
+	response.Send(http.StatusCreated, postsResult, fastCtx)
+	return
 }
 
-func GetThreadDetails(eCtx echo.Context) error {
-	thread, err := getThread(eCtx)
+func GetThreadDetails(fastCtx *fasthttp.RequestCtx) {
+	threadIdOrSlug := fastCtx.UserValue(threadSlug).(string)
+	slug := ""
+	id, err := strconv.Atoi(threadIdOrSlug)
 	if err != nil {
-		fmt.Println("GetThreadDetails (1)", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
-			Message: err.Error(),
-		})
+		id = 0
+		slug = threadIdOrSlug
 	}
-	return eCtx.JSON(http.StatusOK, forms.ThreadForm{
+	ctx := context.Background()
+	thread := forms.ThreadModel{}
+	if err = DBS.QueryRow(ctx, `
+		select id, title, author, forum, message, slug, votes, created
+			from thread 
+		where id = $1 or lower(slug) = lower($2)`, id, slug).
+		Scan(
+			&thread.Id,
+			&thread.Title,
+			&thread.Author,
+			&thread.Forum,
+			&thread.Message,
+			&thread.Slug,
+			&thread.Votes,
+			&thread.Created,
+		); err != nil {
+		fmt.Println("GetThreadDetails:", err, slug, id)
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: err.Error(),
+		}, fastCtx)
+		return
+	}
+
+	response.Send(http.StatusOK, forms.ThreadForm{
 		Id:      thread.Id,
 		Title:   thread.Title,
 		Author:  thread.Author,
@@ -137,35 +181,73 @@ func GetThreadDetails(eCtx echo.Context) error {
 		Slug:    thread.Slug.String,
 		Votes:   thread.Votes,
 		Created: strfmt.DateTime(thread.Created.UTC()).String(),
-	})
+	}, fastCtx)
 }
-func UpdateThreadDetails(eCtx echo.Context) error {
-	ctx := eCtx.Request().Context()
-	thread, err := getThread(eCtx)
-	if err != nil {
-		fmt.Println("UpdateThreadDetails (1)", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
-			Message: err.Error(),
-		})
+func UpdateThreadDetails(fastCtx *fasthttp.RequestCtx) {
+	ctx := context.Background()
+	slug := fastCtx.UserValue(threadSlug).(string)
+	threadid, ok := checkThreadByIdOrSlug(ctx, slug)
+	if !ok {
+		fmt.Println("UpdateThreadDetails (1)", errNoneThread)
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: errNoneThread.Error(),
+		}, fastCtx)
+		return
 	}
 	threadUpdate := forms.ThreadUpdate{}
-	if err = eCtx.Bind(&threadUpdate); err != nil {
+	if err := threadUpdate.UnmarshalJSON(fastCtx.Request.Body()); err != nil {
 		fmt.Println("UpdateThreadDetails (2)", err)
+		return
+	}
+	if threadUpdate.Message == "" && threadUpdate.Title == "" {
+		thread, err := getThreadById(ctx, threadid)
+		if err != nil {
+			response.Send(http.StatusNotFound, forms.Error{
+				Message: errNoneThread.Error(),
+			}, fastCtx)
+			return
+		}
+		response.Send(http.StatusOK, forms.ThreadForm{
+			Id:      thread.Id,
+			Title:   thread.Title,
+			Author:  thread.Author,
+			Forum:   thread.Forum,
+			Message: thread.Message,
+			Slug:    thread.Slug.String,
+			Created: strfmt.DateTime(thread.Created.UTC()).String(),
+		}, fastCtx)
+		return
+	}
+	builder := strings.Builder{}
+	builder.WriteString("update thread set")
+	if threadUpdate.Title != "" {
+		builder.WriteString(fmt.Sprintf(` title = '%s'`, threadUpdate.Title))
 	}
 	if threadUpdate.Message != "" {
-		thread.Message = threadUpdate.Message
+		if threadUpdate.Title != "" {
+			builder.WriteString(",")
+		}
+		builder.WriteString(fmt.Sprintf(` message = '%s'`, threadUpdate.Message))
+
 	}
-	if threadUpdate.Title != "" {
-		thread.Title = threadUpdate.Title
-	}
-	if _, err = DBS.Exec(ctx, `
-		update thread set title = $1, message = $2 where id = $3`, thread.Title, thread.Message, thread.Id); err != nil {
+	builder.WriteString(" where id = $1 returning id,title,author,forum,message,slug,created")
+	thread := forms.ThreadModel{}
+	if err := DBS.QueryRow(ctx, builder.String(), threadid).Scan(
+		&thread.Id,
+		&thread.Title,
+		&thread.Author,
+		&thread.Forum,
+		&thread.Message,
+		&thread.Slug,
+		&thread.Created,
+	); err != nil {
 		fmt.Println("GetThreadDetails (3) none thread", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
+		response.Send(http.StatusNotFound, forms.Error{
 			Message: "None thread",
-		})
+		}, fastCtx)
+		return
 	}
-	return eCtx.JSON(http.StatusOK, forms.ThreadForm{
+	response.Send(http.StatusOK, forms.ThreadForm{
 		Id:      thread.Id,
 		Title:   thread.Title,
 		Author:  thread.Author,
@@ -173,40 +255,44 @@ func UpdateThreadDetails(eCtx echo.Context) error {
 		Message: thread.Message,
 		Slug:    thread.Slug.String,
 		Created: strfmt.DateTime(thread.Created.UTC()).String(),
-	})
+	}, fastCtx)
 }
 
-func SetThreadVote(eCtx echo.Context) error {
-	ctx := eCtx.Request().Context()
-	thread, err := getThread(eCtx)
-	if err != nil {
-		fmt.Println("SetThreadVote (1)", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
-			Message: err.Error(),
-		})
+func SetThreadVote(fastCtx *fasthttp.RequestCtx) {
+	ctx := context.Background()
+	slug := fastCtx.UserValue(threadSlug).(string)
+	threadid, ok := checkThreadByIdOrSlug(ctx, slug)
+	if !ok {
+		fmt.Println("SetThreadVote (1)", errNoneThread, slug)
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: errNoneThread.Error(),
+		}, fastCtx)
+		return
 	}
 	vote := forms.Vote{}
-	if err = eCtx.Bind(&vote); err != nil {
+	if err := vote.UnmarshalJSON(fastCtx.Request.Body()); err != nil {
 		fmt.Println("SetThreadVote (2)", err)
 	}
-	if _, err = DBS.Exec(ctx, `
+	if _, err := DBS.Exec(ctx, `
 		insert into vote (threadid, nickname, voice)
 			values ($1,$2,$3)
 		on conflict on constraint unique_voice do update 
-		set voice = excluded.voice`, thread.Id, vote.Nickname, vote.Voice); err != nil {
+		set voice = excluded.voice`, threadid, vote.Nickname, vote.Voice); err != nil {
 		fmt.Println("SetThreadVote (3)", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
+		response.Send(http.StatusNotFound, forms.Error{
 			Message: "None thread",
-		})
+		}, fastCtx)
+		return
 	}
-	votes, err := getVotes(ctx, thread.Id)
+	thread, err := getThreadById(ctx, threadid)
 	if err != nil {
 		fmt.Println("SetThreadVote (3)", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
+		response.Send(http.StatusNotFound, forms.Error{
 			Message: "None thread",
-		})
+		}, fastCtx)
+		return
 	}
-	return eCtx.JSON(http.StatusOK, forms.ThreadForm{
+	response.Send(http.StatusOK, forms.ThreadForm{
 		Id:      thread.Id,
 		Title:   thread.Title,
 		Author:  thread.Author,
@@ -214,31 +300,106 @@ func SetThreadVote(eCtx echo.Context) error {
 		Message: thread.Message,
 		Slug:    thread.Slug.String,
 		Created: strfmt.DateTime(thread.Created.UTC()).String(),
-		Votes:   votes,
-	})
+		Votes:   thread.Votes,
+	}, fastCtx)
 }
 
-func getThread(eCtx echo.Context) (forms.ThreadModel, error) {
-	threadIdOrSlug, err := getThreadParam(eCtx)
-	if err != nil {
-		return forms.ThreadModel{}, err
+func GetThreadPosts(fastCtx *fasthttp.RequestCtx) {
+	ctx := context.Background()
+	slug := fastCtx.UserValue(threadSlug).(string)
+	threadid, ok := checkThreadByIdOrSlug(ctx, slug)
+	if !ok {
+		fmt.Println("GetThreadPosts (1)", errNoneThread)
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: errNoneThread.Error(),
+		}, fastCtx)
+		return
 	}
-	ctx := eCtx.Request().Context()
-	return getThreadBySlug(ctx, threadIdOrSlug)
+
+	limitString := string(fastCtx.QueryArgs().Peek("limit"))
+	sinceString := string(fastCtx.QueryArgs().Peek("since"))
+	descString := string(fastCtx.QueryArgs().Peek("desc"))
+	limit := 0
+	since := 0
+	desc := false
+	var err error
+	if limitString != "" {
+		if limit, err = strconv.Atoi(limitString); err != nil {
+			fmt.Println("GetThreadPosts (2)", err)
+			response.Send(http.StatusInternalServerError, forms.Error{
+				Message: " smth wrong",
+			}, fastCtx)
+			return
+		}
+	}
+	if sinceString != "" {
+		if since, err = strconv.Atoi(sinceString); err != nil {
+			fmt.Println("GetThreadPosts (3)", err)
+			response.Send(http.StatusInternalServerError, forms.Error{
+				Message: " smth wrong",
+			}, fastCtx)
+			return
+		}
+	}
+	if descString != "" {
+		if desc, err = strconv.ParseBool(descString); err != nil {
+			response.Send(http.StatusInternalServerError, forms.Error{
+				Message: " smth wrong",
+			}, fastCtx)
+			return
+		}
+	}
+	postsMeta := forms.ThreadPosts{
+		Limit: limit,
+		Desc:  desc,
+		Sort:  string(fastCtx.QueryArgs().Peek("sort")),
+		Since: since,
+	}
+	if postsMeta.Sort == "" {
+		postsMeta.Sort = "flat"
+	}
+	posts := new(forms.Posts)
+	switch postsMeta.Sort {
+	case "flat":
+		*posts, err = getPostsFlat(ctx, threadid, postsMeta.Limit, postsMeta.Since, postsMeta.Desc)
+	case "tree":
+		*posts, err = getPostsTree(ctx, threadid, postsMeta.Limit, postsMeta.Since, postsMeta.Desc)
+	case "parent_tree":
+		*posts, err = getPostsParentTree(ctx, threadid, postsMeta.Limit, postsMeta.Since, postsMeta.Desc)
+	}
+	if err != nil {
+		fmt.Println("GetThreadPosts (4)", err)
+		response.Send(http.StatusInternalServerError, forms.Error{
+			Message: " smth wrong",
+		}, fastCtx)
+		return
+	}
+
+	response.Send(http.StatusOK, posts, fastCtx)
+	return
 }
 
-func getThreadBySlug(ctx context.Context, threadIdOrSlug string) (forms.ThreadModel, error) {
+func checkThreadByIdOrSlug(ctx context.Context, threadIdOrSlug string) (int, bool) {
 	slug := ""
 	id, err := strconv.Atoi(threadIdOrSlug)
 	if err != nil {
 		id = 0
 		slug = threadIdOrSlug
 	}
+	if err = DBS.QueryRow(ctx, `select id from thread 
+		where id = $1 or lower(slug) = lower($2)`, id, slug).Scan(&id); err != nil {
+		fmt.Println("checkThreadByIdOrSlug none thread: ", slug, id)
+		return 0, false
+	}
+	return id, true
+}
+
+func getThreadById(ctx context.Context, threadId int) (forms.ThreadModel, error) {
 	thread := forms.ThreadModel{}
-	if err = DBS.QueryRow(ctx, `
+	if err := DBS.QueryRow(ctx, `
 		select id, title, author, forum, message, slug, votes, created
 			from thread 
-		where id = $1 or lower(slug) = lower($2) `, id, slug).
+		where id = $1 `, threadId).
 		Scan(
 			&thread.Id,
 			&thread.Title,
@@ -255,84 +416,17 @@ func getThreadBySlug(ctx context.Context, threadIdOrSlug string) (forms.ThreadMo
 	return thread, nil
 }
 
-func getThreadParam(eCtx echo.Context) (string, error) {
-	slug := eCtx.Param(threadSlug)
-	if slug == "" {
-		eCtx.Logger().Error("cannot get username")
-		return slug, eCtx.JSON(
-			http.StatusBadRequest,
-			forms.Error{Message: "None user"})
+func getThreadForumById(ctx context.Context, threadId int) (string, error) {
+	forum := ""
+	if err := DBS.QueryRow(ctx, `
+		select forum
+			from thread 
+		where id = $1 `, threadId).
+		Scan(
+			&forum,
+		); err != nil {
+		fmt.Println("SetThreadVote (1) none thread", err)
+		return forum, errors.New("None thread")
 	}
-	return slug, nil
-}
-
-func getVotes(ctx context.Context, threadid int) (int, error) {
-	votes := 0
-	err := DBS.QueryRow(ctx,
-		`select sum(voice) from vote where threadid = $1`,
-		threadid,
-	).
-		Scan(&votes)
-
-	return votes, err
-}
-
-func GetThreadPosts(eCtx echo.Context) error {
-	ctx := eCtx.Request().Context()
-	thread, err := getThread(eCtx)
-	if err != nil {
-		fmt.Println("GetThreadPosts (1)", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
-			Message: err.Error(),
-		})
-	}
-
-	limitString := eCtx.QueryParam("limit")
-	sinceString := eCtx.QueryParam("since")
-	descString := eCtx.QueryParam("desc")
-	limit := 0
-	since := 0
-	desc := false
-	if limitString != "" {
-		if limit, err = strconv.Atoi(limitString); err != nil {
-			fmt.Println("GetThreadPosts (2)", err)
-			return err
-		}
-	}
-	if sinceString != "" {
-		if since, err = strconv.Atoi(sinceString); err != nil {
-			fmt.Println("GetThreadPosts (3)", err)
-			return err
-		}
-	}
-	if descString != "" {
-		if desc, err = strconv.ParseBool(descString); err != nil {
-			fmt.Println("GetThreadPosts (4)", err)
-			return err
-		}
-	}
-	postsMeta := forms.ThreadPosts{
-		Limit: limit,
-		Desc:  desc,
-		Sort:  eCtx.QueryParam("sort"),
-		Since: since,
-	}
-	if postsMeta.Sort == "" {
-		postsMeta.Sort = "flat"
-	}
-	posts := []forms.Post{}
-	switch postsMeta.Sort {
-	case "flat":
-		posts, err = getPostsFlat(ctx, thread.Id, postsMeta.Limit, postsMeta.Since, postsMeta.Desc)
-	case "tree":
-		posts, err = getPostsTree(ctx, thread.Id, postsMeta.Limit, postsMeta.Since, postsMeta.Desc)
-	case "parent_tree":
-		posts, err = getPostsParentTree(ctx, thread.Id, postsMeta.Limit, postsMeta.Since, postsMeta.Desc)
-	}
-	if err != nil {
-		fmt.Println("GetThreadPosts (5)", err)
-		return eCtx.JSON(http.StatusInternalServerError, forms.Error{Message: "parse err"})
-	}
-
-	return eCtx.JSON(http.StatusOK, posts)
+	return forum, nil
 }

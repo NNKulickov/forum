@@ -34,3 +34,6 @@ type PostDetails struct {
 	Thread *ThreadForm  `json:"thread,omitempty"`
 	Forum  *ForumResult `json:"forum,omitempty"`
 }
+
+//easyjson:json
+type Posts []Post

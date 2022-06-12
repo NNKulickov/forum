@@ -43,3 +43,6 @@ type Vote struct {
 	Nickname string `json:"nickname"`
 	Voice    int    `json:"voice"`
 }
+
+//easyjson:json
+type ThreadsFrom []ThreadForm

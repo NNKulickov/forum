@@ -4,38 +4,31 @@ import (
 	"context"
 	"fmt"
 	"github.com/NNKulickov/forum/api"
-	"time"
-
-	//"github.com/NNKulickov/forum/api"
 	_ "github.com/NNKulickov/forum/docs"
+	"github.com/fasthttp/router"
 	"github.com/jackc/pgx/v4/pgxpool"
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
-	echoSwagger "github.com/swaggo/echo-swagger"
+	"github.com/valyala/fasthttp"
 	"io/ioutil"
 	"log"
 	"os"
+	"time"
 )
 
 const initialScriptPath = "./db/db.sql"
 
 func main() {
-	e := echo.New()
-	e.Debug = true
-	e.GET("/docs/*", echoSwagger.WrapHandler)
+	fastRouter := router.New()
 	api.DBS = initDB(context.Background(), initialScriptPath)
-	e.Use(middleware.LoggerWithConfig(
-		middleware.LoggerConfig{
-			Format: `{"time":"${time_unix}",` +
-				`"status":${status},"error":"${error}","latency_human":"${latency_human}"` +
-				`"method":"${method}","uri":"${uri}",` +
-				"\n",
-		},
-	))
-	api.InitRoutes(e.Group("/api"))
-	log.Fatal(e.Start("0.0.0.0:5000"))
+	api.InitRoutes(fastRouter.Group("/api"))
+	log.Fatal(fasthttp.ListenAndServe("0.0.0.0:5000", wrapperHeader(fastRouter.Handler)).Error())
 }
 
+func wrapperHeader(handler fasthttp.RequestHandler) fasthttp.RequestHandler {
+	return func(ctx *fasthttp.RequestCtx) {
+		ctx.Response.Header.Set("Content-Type", "application/json")
+		handler(ctx)
+	}
+}
 func initDB(defaultCtx context.Context, initDBPath string) *pgxpool.Pool {
 	connectString := fmt.Sprintf(
 		"user=%s password=%s dbname=%s host=%s port=5432 sslmode=disable TimeZone=Europe/Moscow",

@@ -5,24 +5,39 @@ import (
 	"database/sql"
 	"fmt"
 	"github.com/NNKulickov/forum/forms"
+	"github.com/NNKulickov/forum/response"
 	"github.com/go-openapi/strfmt"
-	"github.com/labstack/echo/v4"
+	"github.com/valyala/fasthttp"
 	"net/http"
 	"strconv"
 	"strings"
 )
 
-func CreateForum(eCtx echo.Context) error {
+func CreateForum(fastCtx *fasthttp.RequestCtx) {
 	forum := forms.PostForum{}
-	if err := eCtx.Bind(&forum); err != nil {
+	ctx := context.Background()
+
+	if err := forum.UnmarshalJSON(fastCtx.Request.Body()); err != nil {
 		fmt.Println("CreateForum (1):", err)
-		return err
+		response.Send(http.StatusInternalServerError, forms.Error{
+			Message: " smth wrong",
+		}, fastCtx)
+		return
 	}
-	ctx := eCtx.Request().Context()
+	_, ok := checkForumSlug(ctx, forum.Slug)
+	if ok {
+		if res, err := getForum(ctx, forum.Slug); err == nil {
+			response.Send(http.StatusConflict, res, fastCtx)
+			return
+		}
+	}
 	user, err := getUserByNicknam(ctx, forum.User)
 	if err != nil {
-		return eCtx.JSON(404, forms.Error{
-			Message: "none such user"})
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: "none such user",
+		}, fastCtx)
+
+		return
 	}
 	_, err = DBS.Exec(ctx, `
 		insert into forum (slug,title,host)
@@ -33,55 +48,63 @@ func CreateForum(eCtx echo.Context) error {
 		user.Nickname,
 	)
 	if err == nil {
-		return eCtx.JSON(201, forms.ForumResult{
+		response.Send(http.StatusCreated, forms.ForumResult{
 			Title:   forum.Title,
 			User:    user.Nickname,
 			Slug:    forum.Slug,
 			Posts:   0,
 			Threads: 0,
-		})
-	}
-	if res, err := getForum(ctx, forum.Slug); err == nil {
-		return eCtx.JSON(http.StatusConflict, res)
+		}, fastCtx)
+		return
 	}
 	fmt.Println("CreateForum (2):", err)
-	return eCtx.JSON(404, forms.Error{
-		Message: "none such user"})
+	response.Send(http.StatusNotFound, forms.Error{
+		Message: "none such user",
+	}, fastCtx)
 }
 
-func GetForumDetails(eCtx echo.Context) error {
-	forumParam := eCtx.Param(forumSlug)
-	ctx := eCtx.Request().Context()
-
+func GetForumDetails(fastCtx *fasthttp.RequestCtx) {
+	forumParam := fastCtx.UserValue(forumSlug).(string)
+	ctx := context.Background()
+	fmt.Println("details:")
 	forum, err := getForum(ctx, forumParam)
 	if err != nil {
-		fmt.Println("CreateForum (1):", err)
-		return eCtx.JSON(404, forms.Error{
-			Message: "none such forum"})
+		fmt.Println("GetForumDetails (1):", err)
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: "none such forum",
+		}, fastCtx)
+		return
 	}
-
-	return eCtx.JSON(200, forum)
-
+	response.Send(http.StatusOK, forum, fastCtx)
 }
 
-func CreateForumThread(eCtx echo.Context) error {
-	slug := eCtx.Param(forumSlug)
+func CreateForumThread(fastCtx *fasthttp.RequestCtx) {
+	slug := fastCtx.Value(forumSlug).(string)
 	thread := forms.ThreadForm{}
-	ctx := eCtx.Request().Context()
-	if err := eCtx.Bind(&thread); err != nil {
+	ctx := context.Background()
+	if err := thread.UnmarshalJSON(fastCtx.Request.Body()); err != nil {
 		fmt.Println("CreateForumThread (1):", err)
-		return err
+		return
 	}
-	forum, err := getForum(ctx, slug)
+	var err error
+	slug, ok := checkForumSlug(ctx, slug)
+	if !ok {
+		fmt.Println("CreateForumThread not found (3)", err)
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: "none such forum"}, fastCtx)
+		return
+	}
 	if err != nil {
 		fmt.Println("CreateForumThread (2):", err)
-		return eCtx.JSON(404, forms.Error{
-			Message: "none such user or forum"})
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: "none such user or forum",
+		}, fastCtx)
+		return
 	}
 	threadModel := forms.ThreadModel{
 		Title:   thread.Title,
 		Author:  thread.Author,
-		Forum:   forum.Slug,
+		Forum:   slug,
 		Message: thread.Message,
 		Slug:    sql.NullString{String: thread.Slug, Valid: true},
 	}
@@ -109,7 +132,7 @@ func CreateForumThread(eCtx echo.Context) error {
 			&threadModel.Id,
 			&threadModel.Created,
 		); err == nil {
-		return eCtx.JSON(201, forms.ThreadForm{
+		response.Send(http.StatusCreated, forms.ThreadForm{
 			Id:      threadModel.Id,
 			Title:   threadModel.Title,
 			Author:  threadModel.Author,
@@ -118,10 +141,12 @@ func CreateForumThread(eCtx echo.Context) error {
 			Slug:    threadModel.Slug.String,
 			Votes:   threadModel.Votes,
 			Created: strfmt.DateTime(threadModel.Created.UTC()).String(),
-		})
+		}, fastCtx)
+
+		return
 	}
 	// select if exists
-	if err = DBS.QueryRow(eCtx.Request().Context(), `
+	if err = DBS.QueryRow(ctx, `
 		select
 		id,
 		title,
@@ -143,7 +168,7 @@ func CreateForumThread(eCtx echo.Context) error {
 			&threadModel.Slug,
 			&threadModel.Created,
 		); err == nil {
-		return eCtx.JSON(409, forms.ThreadForm{
+		response.Send(http.StatusConflict, forms.ThreadForm{
 			Id:      threadModel.Id,
 			Title:   threadModel.Title,
 			Author:  threadModel.Author,
@@ -151,27 +176,29 @@ func CreateForumThread(eCtx echo.Context) error {
 			Message: threadModel.Message,
 			Slug:    threadModel.Slug.String,
 			Created: strfmt.DateTime(threadModel.Created.UTC()).String(),
-		})
+		}, fastCtx)
+		return
 	}
 	fmt.Println("CreateForumThread not found (3)", err)
-	return eCtx.JSON(404, forms.Error{
-		Message: "none such user or forum"})
+	response.Send(http.StatusNotFound, forms.Error{
+		Message: "none such user or forum"}, fastCtx)
 }
 
-func GetForumUsers(eCtx echo.Context) error {
-	slug := eCtx.Param(forumSlug)
-	ctx := eCtx.Request().Context()
-	forum, err := getForum(ctx, slug)
-	if err != nil {
-		fmt.Println("GetForumUsers (0):", err)
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
-			Message: "none such forum"})
+func GetForumUsers(fastCtx *fasthttp.RequestCtx) {
+	slug := fastCtx.UserValue(forumSlug).(string)
+	ctx := context.Background()
+	var err error
+	slug, ok := checkForumSlug(ctx, slug)
+	if !ok {
+		fmt.Println("CreateForumThread not found (3)", err)
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: "none such forum"}, fastCtx)
+		return
 	}
-	slug = forum.Slug
 	limit := 0
 	desc := false
-	limitString := eCtx.QueryParam("limit")
-	descString := eCtx.QueryParam("desc")
+	limitString := string(fastCtx.QueryArgs().Peek("limit"))
+	descString := string(fastCtx.QueryArgs().Peek("desc"))
 	if limit, err = strconv.Atoi(limitString); err != nil {
 		fmt.Println("GetForumUsers (1):", err)
 	}
@@ -181,7 +208,7 @@ func GetForumUsers(eCtx echo.Context) error {
 	users := forms.UserFilter{
 		Limit: limit,
 		Desc:  desc,
-		Since: eCtx.QueryParam("since"),
+		Since: string(fastCtx.QueryArgs().Peek("since")),
 	}
 	build := strings.Builder{}
 
@@ -205,7 +232,7 @@ func GetForumUsers(eCtx echo.Context) error {
 	build.WriteString(" limit nullif($2,0)")
 	if rows, err := DBS.Query(ctx, build.String(),
 		slug, users.Limit); err == nil {
-		usersResponse := make([]forms.User, 0, 100)
+		usersResponse := new(forms.Users)
 		for rows.Next() {
 			user := forms.User{}
 			if err = rows.
@@ -216,47 +243,51 @@ func GetForumUsers(eCtx echo.Context) error {
 					&user.Email,
 				); err != nil {
 				fmt.Println("GetForumUsers (2):", err)
-
-				return eCtx.JSON(http.StatusInternalServerError, forms.Error{
-					Message: "smth wrong"})
+				response.Send(http.StatusInternalServerError, forms.Error{
+					Message: " smth wrong",
+				}, fastCtx)
 			}
-			usersResponse = append(usersResponse, user)
+			*usersResponse = append(*usersResponse, user)
 		}
-		return eCtx.JSON(http.StatusOK, usersResponse)
+		if len(*usersResponse) == 0 {
+			empty := forms.EmptyArray{}
+			response.Send(http.StatusOK, empty, fastCtx)
+			return
+		}
+		response.Send(http.StatusOK, usersResponse, fastCtx)
+		return
 	}
-	return eCtx.JSON(http.StatusNotFound, forms.Error{
-		Message: "none such forum"})
+	response.Send(http.StatusNotFound, forms.Error{
+		Message: "none such forum"}, fastCtx)
+	return
 }
 
-func GetForumThreads(eCtx echo.Context) error {
-	slug := eCtx.Param(forumSlug)
-	ctx := eCtx.Request().Context()
+func GetForumThreads(fastCtx *fasthttp.RequestCtx) {
+	slug := fastCtx.UserValue(forumSlug).(string)
+	ctx := context.Background()
 	forum := ""
 	if err := DBS.QueryRow(ctx,
 		`select slug from forum where lower(slug) = lower($1)`,
 		slug).Scan(&forum); err != nil {
-		return eCtx.JSON(http.StatusNotFound, forms.Error{
-			Message: "none forum"})
+		response.Send(http.StatusNotFound, forms.Error{
+			Message: "none forum"}, fastCtx)
+		return
 	}
 	slug = forum
-	limit, err := strconv.Atoi(eCtx.QueryParam("limit"))
+	limit, err := strconv.Atoi(string(fastCtx.QueryArgs().Peek("limit")))
 	if err != nil {
 		fmt.Println("err:", err)
 		limit = 0
 	}
-	desc, err := strconv.ParseBool(eCtx.QueryParam("desc"))
+	desc, err := strconv.ParseBool(string(fastCtx.QueryArgs().Peek("desc")))
 	if err != nil {
 		fmt.Println("err:", err)
 		desc = false
 	}
 	threadsFilter := forms.ThreadFilter{
 		Limit: limit,
-		Since: eCtx.QueryParam("since"),
+		Since: string(fastCtx.QueryArgs().Peek("since")),
 		Desc:  desc,
-	}
-	if err := eCtx.Bind(&threadsFilter); err != nil {
-		fmt.Println("GetForumThreads (1):", err)
-		return err
 	}
 	build := strings.Builder{}
 	build.WriteString(`
@@ -291,7 +322,7 @@ func GetForumThreads(eCtx echo.Context) error {
 			build.String(),
 			slug,
 			threadsFilter.Limit); err == nil {
-		threadsResponse := make([]forms.ThreadForm, 0, 100)
+		threadsResponse := new(forms.ThreadsFrom)
 		for rows.Next() {
 			thread := forms.ThreadModel{}
 			if err = rows.
@@ -306,11 +337,12 @@ func GetForumThreads(eCtx echo.Context) error {
 					&thread.Votes,
 				); err != nil {
 				fmt.Println("GetForumThreads (2):", err)
-
-				return eCtx.JSON(http.StatusInternalServerError, forms.Error{
-					Message: "smth wrong"})
+				response.Send(http.StatusInternalServerError, forms.Error{
+					Message: " smth wrong",
+				}, fastCtx)
+				return
 			}
-			threadsResponse = append(threadsResponse, forms.ThreadForm{
+			*threadsResponse = append(*threadsResponse, forms.ThreadForm{
 				Id:      thread.Id,
 				Title:   thread.Title,
 				Author:  thread.Author,
@@ -321,12 +353,32 @@ func GetForumThreads(eCtx echo.Context) error {
 				Created: strfmt.DateTime(thread.Created.UTC()).String(),
 			})
 		}
-		return eCtx.JSON(http.StatusOK, threadsResponse)
+		if len(*threadsResponse) == 0 {
+			empty := forms.EmptyArray{}
+			response.Send(http.StatusOK, empty, fastCtx)
+			return
+		}
+		response.Send(http.StatusOK, threadsResponse, fastCtx)
+		return
 	}
-	return eCtx.JSON(http.StatusNotFound, forms.Error{
-		Message: "none such forum"})
-}
+	response.Send(http.StatusNotFound, forms.Error{
+		Message: "none such forum"}, fastCtx)
 
+	return
+}
+func checkForumSlug(ctx context.Context, slug string) (string, bool) {
+	findSlug := ""
+	err := DBS.QueryRow(ctx, `
+	select slug from forum where lower(slug) = lower($1);
+	`, slug).
+		Scan(
+			&findSlug,
+		)
+	if err != nil {
+		return "", false
+	}
+	return findSlug, true
+}
 func getForum(ctx context.Context, slug string) (forms.ForumResult, error) {
 	forum := forms.ForumResult{}
 

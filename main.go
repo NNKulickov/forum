@@ -39,7 +39,7 @@ func initDB(defaultCtx context.Context, initDBPath string) *pgxpool.Pool {
 	)
 	fmt.Println(connectString)
 	connectConf, err := pgxpool.ParseConfig(connectString)
-	connectConf.MaxConns = 100
+	connectConf.MaxConns = 128
 	connectConf.MaxConnLifetime = time.Minute
 	connectConf.MaxConnIdleTime = time.Second * 5
 	if err != nil {

@@ -243,4 +243,4 @@ CREATE INDEX IF NOT EXISTS post_thread_parent_id_threadid ON post (threadid, par
 CREATE INDEX IF NOT EXISTS post_first_parent_id ON post ((pathtree[1]),id); -- parent tree sort
 CREATE INDEX IF NOT EXISTS thread_parenttree_post on post (threadid,pathtree); -- tree sort
 CREATE INDEX IF NOT EXISTS post_first_parent_thread ON post ((pathtree[1]), threadid); -- tree sort
-CREATE INDEX IF NOT EXISTS forum_actor_forum ON forum_actors (lower(forum));
+CREATE INDEX IF NOT EXISTS forum_actor_forum ON forum_actors using hash (lower(forum));
